@@ -1,7 +1,7 @@
 import os
 from azure.ai.projects.models import CodeInterpreterTool, FileSearchTool, ToolSet, OpenAIFile, VectorStore
 
-DATA_DIR = "./data"
+DATA_DIR = "../data"
 
 def initialize_tools(project_client):
     pdf_files = [
