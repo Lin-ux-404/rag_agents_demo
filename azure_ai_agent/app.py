@@ -8,6 +8,9 @@ load_dotenv()
 
 client, assistant = get_assistant()
 
+print("Assistant ID:", assistant.id)
+print("CLIENT:", client)
+
 for key in ['assistant', 'thread_id', 'messages', 'file_id', 'vector_store_id']:
     if key not in st.session_state:
         st.session_state[key] = [] if key == 'messages' else None
