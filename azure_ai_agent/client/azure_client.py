@@ -1,7 +1,7 @@
 from openai import AzureOpenAI
 import os
 from dotenv import load_dotenv
-
+import configs.agent_config as agent_config
 load_dotenv()
 
 
@@ -16,10 +16,13 @@ def get_client():
 
 def get_assistant():
     """
-    Creates an assistant with file search capabilities using Azure OpenAI
+    Creates an assistant with file search capabilities using Azure OpenAI.
+    The  API version we use here is outdated and the file search tool 
+    differs from the MSLearn documentation.
+    
     refrences:
     https://platform.openai.com/docs/guides/retrieval#quickstart
-
+    https://learn.microsoft.com/en-us/azure/ai-services/openai/how-to/file-search?tabs=python
     """
     client = get_client()
     
@@ -50,10 +53,13 @@ def get_assistant():
     
     # Create assistant with file search capability
     assistant = client.beta.assistants.create(
-        name="Employee Information Assistant",
-        instructions="You are an expert assistant. Use the provided documents to answer questions about employee information.",
+        name=agent_config.AGENT_NAME,
+        instructions=agent_config.AGENT_INSTRUCTIONS,
         model="gpt-4o",  # Using specific model name
-        tools=[{"type": "file_search"}, {"type": "code_interpreter"}]
+        tools=[{"type": "file_search"}, {"type": "code_interpreter"}],
+        temperature=agent_config.TEMPERATURE,
+        top_p=agent_config.TOP_P,
+        max_tokens=agent_config.MAX_TOKENS,
     )
     
     # Update assistant with vector store access
