@@ -1,8 +1,52 @@
-# rag_agents_demo
+# RAG Agents Demo Workshop
 
-1. Set .env file according to the sample. Leave `ASSISTANT_ID` and `VECTOR_STORE_ID` empty.
-2. Go to client/azure_client and look at the get_assistant function.
-3. run the agent by typing `streamlit run ./azure_ai_agent/app.py` in your terminal and play around with the chat.
-4. Change the system_prompt, temperature and top_p parameters in the azure_client.py file and re-run the app to see how prompting changes the behavior.
-5. Comment out `## 1. Basic assistant.` and uncomment `## 2. RAG assistant.`. This will add RAG capabilities to your agent. Re-run and try asking some questions about the files in the ./data folder.
-6. Do the same as step 5, but now uncomment `## 3. RAG and code execution assistant.`. This will add code execution on top of RAG. Now you can ask questions like, can you plot all employees on a graph according to their job title.
+A hands-on workshop demonstrating how to build intelligent AI agents using Azure OpenAI's Assistants API, progressing from basic chat to advanced RAG with code execution capabilities.
+
+## Overview
+
+This workshop guides you through building three levels of AI agents:
+1. Basic Chat Assistant - Simple conversational AI
+2. RAG-Enhanced Assistant - AI with document knowledge using Azure's vector store
+3. Advanced Agent - Combines RAG with code interpreter for data analysis
+
+## Technologies Used
+
+- **Azure OpenAI Service** - Core AI capabilities including:
+  - Assistants API
+  - Vector Store for document embeddings
+  - File Search tool for RAG
+  - Code Interpreter
+- **Streamlit** - Web interface for agent interaction
+- **Python** - Core programming language
+
+## Workshop Steps
+
+1. Set up environment:
+   - Configure `.env` file (leave `ASSISTANT_ID` and `VECTOR_STORE_ID` empty)
+   - Review assistant configuration in `client/azure_client.py`
+
+2. Launch the agent:
+   ```bash
+   streamlit run ./azure_ai_agent/app.py
+   ```
+
+3. Progressive Enhancement Labs:
+   - Lab 1: Basic assistant with customizable prompting parameters
+   - Lab 2: Enable RAG capabilities using Azure's vector store and file search
+   - Lab 3: Add code interpreter for data analysis and visualization
+
+## Repository Structure
+
+- `/azure_ai_agent` - Main application code
+- `/data` - Sample documents for RAG functionality (PDF files)
+- `/client` - Azure OpenAI client configuration
+- `/utils` - Chat interface utilities
+
+## Contributors
+
+- [Jody Boelen](jodyboelen@microsoft.com)
+- [Shenglin Xu ](shenglinxu@microsoft.com)
+
+## License
+
+This project is licensed under MIT License.
