@@ -1,10 +1,11 @@
-import os
-from dotenv import load_dotenv
+"""
+Agent configuration for the Employee Information Agent.
+This configuration includes the agent's name, instructions, and model parameters.
+"""
 
-load_dotenv()
+AGENT_NAME = "My assistant",
+AGENT_INSTRUCTIONS = "Always use emojis in the response."
 
-AGENT_NAME = "employee-info-agent"
-AGENT_INSTRUCTIONS = (
-    "You are a helpful agent who provides information about employees. "
-    "Keep answers concise, but include as much relevant data as possible."
-)
+TEMPERATURE = 0.5
+TOP_P = 0.9
+MAX_TOKENS = 500

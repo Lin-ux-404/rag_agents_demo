@@ -1,74 +1,122 @@
 import streamlit as st
 import io
 from PIL import Image
+import queue
+import json
+from client.azure_client import get_client
+
+tool_requests = queue.Queue()
+client = get_client()
 
 def display_chat_messages():
     """Display chat messages from session state."""
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
-            st.markdown(message["content"])
-            if "image_data" in message:
-                st.image(message["image_data"])
+            st.write(message["content"])
 
-def handle_user_input(prompt: str, project_client) -> None:
+def handle_user_input(prompt: str, client, assistant) -> None:
     """Handle user input and get agent response."""
 
     st.session_state.messages.append({"role": "user", "content": prompt})
-    
+
     with st.chat_message("user"):
         st.markdown(prompt)
-    
-    with st.chat_message("assistant"):
-        with st.spinner("Thinking..."):
-            with project_client:
-                
-                message = project_client.agents.create_message(
-                    thread_id=st.session_state.thread_id,
-                    role="user",
-                    content=prompt
-                )
 
-                # Run the agent
-                run = project_client.agents.create_and_process_run(
-                    thread_id=st.session_state.thread_id,
-                    agent_id=st.session_state.agent_id
-                )
+    with st.spinner("Thinking..."):
+        with client:
+            if st.session_state['thread'] is not None:
+                thread = st.session_state['thread']
+            else:
+                thread = client.beta.threads.create()
+                st.session_state['thread'] = thread
 
-                if run.status == "failed":
-                    error_message = f"Run failed: {run.last_error}"
-                    st.error(error_message)
-                    st.session_state.messages.append({"role": "assistant", "content": error_message})
-                else:
-                    # Get messages from the thread
-                    messages = project_client.agents.list_messages(thread_id=st.session_state.thread_id)
-                    last_msg = messages.get_last_text_message_by_role("assistant")
-                    
-                    if last_msg:
-                        response_text = last_msg.text.value
-                        st.markdown(response_text)
-                        response_dict = {"role": "assistant", "content": response_text}
+            client.beta.threads.messages.create(
+                thread_id=thread.id,
+                role="user",
+                content=prompt
+            )
 
-                        current_run_messages = [msg for msg in messages.data if msg.run_id == run.id]
-                        for message in current_run_messages:
-                            if hasattr(message, 'image_contents'):
-                                for image_content in message.image_contents:
-                                    # Get image data directly from API and convert to bytes
-                                    image_bytes = b''.join(project_client.agents.get_file_content(
-                                        file_id=image_content.image_file.file_id
-                                    ))
-                                    
-                                    image_data = Image.open(io.BytesIO(image_bytes))
-                                    
-                                    st.image(image_data)
-                                    response_dict["image_data"] = image_data
-                        
-                        st.session_state.messages.append(response_dict)
+            with client.beta.threads.runs.stream(
+                thread_id=thread.id,
+                assistant_id=assistant.id
+            ) as stream:
+                display_stream(stream)
+                while not tool_requests.empty():
+                    tool_outputs, thread_id, run_id = handle_requires_action(
+                        tool_requests.get())
+                    with client.beta.threads.runs.submit_tool_outputs_stream(
+                            thread_id=thread_id,
+                            run_id=run_id,
+                            tool_outputs=tool_outputs
+                    ) as tool_stream:
+                        display_stream(tool_stream, create_context=False)
 
-def reset_session_state(project_client) -> None:
+
+def reset_session_state(client) -> None:
     """Reset session state and delete agent."""
-    if st.session_state.agent_id:
-        with project_client:
-            project_client.agents.delete_agent(st.session_state.agent_id)
-    
-    for key in ['agent_id', 'thread_id', 'messages', 'file_id', 'vector_store_id']:
-        st.session_state[key] = [] if key == 'messages' else None
+    client.beta.threads.delete(st.session_state['thread'].id)
+    for key in ['assistant', 'thread', 'messages']:
+        if key not in st.session_state:
+            st.session_state[key] = [] if key == 'messages' else None
+
+
+def handle_requires_action(tool_request):
+    tool_outputs = []
+    data = tool_request.data
+    for tool in data.required_action.submit_tool_outputs.tool_calls:
+        match tool.function.name:
+            case _:
+                ret_val = {
+                    "status": "error",
+                    "message": f"Function name is not recognize. Make sure you submit the request with the correct "
+                    f"request structure. Fix your request and try again"
+                }
+                tool_outputs.append(
+                    {"tool_call_id": tool.id, "output": json.dumps(ret_val)})
+    return tool_outputs, data.thread_id, data.id
+
+
+def data_streamer():
+    content_produced = False
+    for response in st.session_state.stream:
+        match response.event:
+            case "thread.message.delta":
+                content = response.data.delta.content[0]
+                match content.type:
+                    case "text":
+                        value = content.text.value
+                        content_produced = True
+                        yield value
+                    case "image_file":
+                        image_content = io.BytesIO(client.files.content(
+                            content.image_file.file_id).read())
+                        content_produced = True
+                        yield Image.open(image_content)
+            case "thread.run.requires_action":
+                tool_requests.put(response)
+                if not content_produced:
+                    yield "[LLM requires a function call]"
+                return
+            case "thread.run.failed":
+                return
+
+
+def add_message_to_state_session(message):
+    st.session_state.messages.append({"role": "assistant", "content": message})
+
+
+def display_stream(content_stream, create_context=True):
+    st.session_state.stream = content_stream
+    if create_context:
+        with st.chat_message("assistant"):
+            response = st.write_stream(data_streamer)
+    else:
+        response = st.write_stream(data_streamer)
+    if response is not None:
+        if isinstance(response, list):
+            # Multiple messages in the response
+            for message in response:
+                add_message_to_state_session(message)
+        else:
+            # Single message in response
+            add_message_to_state_session(response)
