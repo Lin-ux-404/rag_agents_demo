@@ -8,6 +8,58 @@ from client.azure_client import get_client
 tool_requests = queue.Queue()
 client = get_client()
 
+def display_chat_messages():
+    """Display chat messages from session state."""
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.write(message["content"])
+
+def handle_user_input(prompt: str, client, assistant) -> None:
+    """Handle user input and get agent response."""
+
+    st.session_state.messages.append({"role": "user", "content": prompt})
+
+    with st.chat_message("user"):
+        st.markdown(prompt)
+
+    with st.spinner("Thinking..."):
+        with client:
+            if st.session_state['thread'] is not None:
+                thread = st.session_state['thread']
+            else:
+                thread = client.beta.threads.create()
+                st.session_state['thread'] = thread
+
+            client.beta.threads.messages.create(
+                thread_id=thread.id,
+                role="user",
+                content=prompt
+            )
+
+            with client.beta.threads.runs.stream(
+                thread_id=thread.id,
+                assistant_id=assistant.id
+            ) as stream:
+                display_stream(stream)
+                while not tool_requests.empty():
+                    tool_outputs, thread_id, run_id = handle_requires_action(
+                        tool_requests.get())
+                    with client.beta.threads.runs.submit_tool_outputs_stream(
+                            thread_id=thread_id,
+                            run_id=run_id,
+                            tool_outputs=tool_outputs
+                    ) as tool_stream:
+                        display_stream(tool_stream, create_context=False)
+
+
+def reset_session_state(client) -> None:
+    """Reset session state and delete agent."""
+    client.beta.threads.delete(st.session_state['thread'].id)
+    for key in ['assistant', 'thread', 'messages']:
+        if key not in st.session_state:
+            st.session_state[key] = [] if key == 'messages' else None
+
+
 def handle_requires_action(tool_request):
     tool_outputs = []
     data = tool_request.data
@@ -17,10 +69,12 @@ def handle_requires_action(tool_request):
                 ret_val = {
                     "status": "error",
                     "message": f"Function name is not recognize. Make sure you submit the request with the correct "
-                               f"request structure. Fix your request and try again"
+                    f"request structure. Fix your request and try again"
                 }
-                tool_outputs.append({"tool_call_id": tool.id, "output": json.dumps(ret_val)})
+                tool_outputs.append(
+                    {"tool_call_id": tool.id, "output": json.dumps(ret_val)})
     return tool_outputs, data.thread_id, data.id
+
 
 def data_streamer():
     content_produced = False
@@ -34,7 +88,8 @@ def data_streamer():
                         content_produced = True
                         yield value
                     case "image_file":
-                        image_content = io.BytesIO(client.files.content(content.image_file.file_id).read())
+                        image_content = io.BytesIO(client.files.content(
+                            content.image_file.file_id).read())
                         content_produced = True
                         yield Image.open(image_content)
             case "thread.run.requires_action":
@@ -44,6 +99,7 @@ def data_streamer():
                 return
             case "thread.run.failed":
                 return
+
 
 def add_message_to_state_session(message):
     st.session_state.messages.append({"role": "assistant", "content": message})
@@ -64,54 +120,3 @@ def display_stream(content_stream, create_context=True):
         else:
             # Single message in response
             add_message_to_state_session(response)
-
-def display_chat_messages():
-    """Display chat messages from session state."""
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.write(message["content"])
-
-
-def handle_user_input(prompt: str, client, assistant) -> None:
-    """Handle user input and get agent response."""
-
-    st.session_state.messages.append({"role": "user", "content": prompt})
-
-    with st.chat_message("user"):
-        st.markdown(prompt)
-
-    with st.spinner("Thinking..."):
-        with client:
-            if 'thread' in st.session_state:
-                thread = st.session_state['thread']
-            else:
-                thread = client.beta.threads.create()
-                st.session_state['thread'] = thread
-
-            client.beta.threads.messages.create(
-                thread_id=thread.id,
-                role="user",
-                content=prompt
-            )
-
-            with client.beta.threads.runs.stream(
-                thread_id=thread.id,
-                assistant_id=assistant.id
-            ) as stream:
-                display_stream(stream)  # No outer st.chat_message here
-                while not tool_requests.empty():
-                    tool_outputs, thread_id, run_id = handle_requires_action(
-                        tool_requests.get())
-                    with client.beta.threads.runs.submit_tool_outputs_stream(
-                            thread_id=thread_id,
-                            run_id=run_id,
-                            tool_outputs=tool_outputs
-                    ) as tool_stream:
-                        display_stream(tool_stream, create_context=False)
-
-
-def reset_session_state() -> None:
-    """Reset session state and delete agent."""
-
-    for key in ['agent_id', 'thread_id', 'messages', 'file_id', 'vector_store_id']:
-        st.session_state[key] = [] if key == 'messages' else None
